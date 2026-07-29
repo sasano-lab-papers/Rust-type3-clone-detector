@@ -1,17 +1,12 @@
-<div align="center">
-
 # Rust Type-3 Clone Detector
 
-トークン情報と抽象構文木情報を用いた  
-Rust向けコードクローン検出プログラム
-
-</div>
-
----
+Rustの関数およびメソッドを対象として，トークン情報と抽象構文木情報を組み合わせてコードクローンを検出するプログラムです。
 
 ## 概要
 
-本プログラムは，Rustプロジェクトから関数およびメソッドを抽出し，トークン情報と抽象構文木情報を用いてコードクローンを検出します。
+本プログラムでは，Rustプロジェクトから関数およびメソッドを抽出し，トークン情報に基づいてクローン対の判定と候補対の抽出を行います。
+
+トークン情報のみでは判定できない候補対については，抽象構文木を生成し，部分木ハッシュおよびAST特徴ベクトルに基づいて判定します。
 
 ```text
 関数・メソッドの抽出
@@ -27,94 +22,46 @@ Rust向けコードクローン検出プログラム
 
 | プログラム | 内容 |
 |---|---|
-| `crates/function_extractor` | Rustファイルから関数およびメソッドを抽出し，字句解析結果や行番号などを取得します |
-| `scripts/token_filter.py` | N行ブロックの一致率とトークン重複度を用いて，クローン対とAST判定用の候補対に分類します |
+| `crates/function_extractor` | Rustファイルから関数およびメソッドを抽出し，字句解析に基づくトークン列や行情報を取得します |
+| `scripts/token_filter.py` | N行ブロックの一致率とトークン重複度を用いて，クローン対の判定とAST判定用の候補対の抽出を行います |
 | `crates/ast_builder` | 候補対に対応する関数およびメソッドからASTを生成します |
-| `scripts/ast_hash_detection.py` | 部分木ハッシュに基づいてAT類似度とDice類似度を計算します |
-| `scripts/ast_vector_detection.py` | AST特徴ベクトルに基づいてJaccard類似度を計算します |
+| `scripts/ast_hash_detection.py` | 部分木ハッシュに基づいてAT類似度とDice類似度を計算し，クローン判定を行います |
+| `scripts/ast_vector_detection.py` | AST特徴ベクトルに基づいてJaccard類似度を計算し，クローン判定を行います |
 | `scripts/run_pipeline.bat` | 各処理を順番に実行します |
 
-## 一括実行
+## 実行方法
 
-リポジトリのルートディレクトリで，次のコマンドを実行します。
+リポジトリをダウンロードまたはクローンした後，リポジトリのルートディレクトリで次のコマンドを実行します。
 
 ```bat
 scripts\run_pipeline.bat "<解析対象のRustプロジェクト>" "<出力先ディレクトリ>"
 ```
 
-第1引数には解析対象のRustプロジェクト，第2引数には中間ファイルおよび検出結果の出力先を指定します。
+第1引数には解析対象のRustプロジェクトのパス，第2引数には中間データおよび検出結果の出力先を指定します。
 
-`scripts`ディレクトリから実行する場合は，次のように指定します。
+処理は次の順序で実行されます。
 
-```bat
-run_pipeline.bat "<解析対象のRustプロジェクト>" "<出力先ディレクトリ>"
+```text
+[1/5] 関数およびメソッドの抽出
+[2/5] トークン情報による候補対の抽出と判定
+[3/5] 候補対に対するASTの生成
+[4/5] 部分木ハッシュによる判定
+[5/5] AST特徴ベクトルによる判定
 ```
 
-## 個別実行
+処理が完了すると，トークン段階の判定結果，AST判定用の候補対，AST情報，および各AST判定手法の結果が指定した出力先に保存されます。
 
-以下のコマンドは，リポジトリのルートディレクトリで実行します。
+## 主な設定値
 
-### 1. 関数およびメソッドの抽出
-
-```bat
-cargo run --release -p rust_extractor -- "<Rustプロジェクト>" "<出力先>\functions_rust.jsonl"
-```
-
-### 2. トークン情報による候補対の抽出と判定
-
-```bat
-py scripts\token_filter.py "<出力先>\functions_rust.jsonl" "<出力先>"
-```
-
-### 3. 候補対に対するASTの生成
-
-```bat
-cargo run --release -p ast_builder -- "<出力先>\ast_candidates.jsonl" "<Rustプロジェクト>" "<出力先>\rust_pairs_with_ast.jsonl"
-```
-
-### 4. 部分木ハッシュによる判定
-
-```bat
-py scripts\ast_hash_detection.py "<出力先>\rust_pairs_with_ast.jsonl" "<出力先>\rust_ast_hash.jsonl" all --threshold 0.65 --dice-threshold 0.70
-```
-
-### 5. AST特徴ベクトルによる判定
-
-```bat
-py scripts\ast_vector_detection.py "<出力先>\rust_pairs_with_ast.jsonl" "<出力先>\rust_ast_vector.jsonl" all --q 1 --threshold 0.75
-```
-
-`py`を使用できない場合は，`py`を`python`に置き換えてください。
-
-## 主な出力ファイル
-
-| ファイル | 内容 |
-|---|---|
-| `functions_rust.jsonl` | 抽出した関数およびメソッドの情報 |
-| `direct_clones.jsonl` | トークン情報によりクローンと判定された対 |
-| `ast_candidates.jsonl` | ASTによる判定に渡される候補対 |
-| `rust_pairs_with_ast.jsonl` | AST情報を付与した候補対 |
-| `rust_ast_hash.jsonl` | 部分木ハッシュによる判定結果 |
-| `rust_ast_vector.jsonl` | AST特徴ベクトルによる判定結果 |
-
-## パラメータ
-
-トークン段階のパラメータは，`scripts/token_filter.py`の先頭付近で設定します。
-
-```python
-MIN_TOKENS = 50
-N = 3
-THETA1 = 0.15
-THETA2 = 0.50
-THETA3 = 0.70
-THETA4 = 0.70
-```
-
-AST段階のパラメータは，`scripts/run_pipeline.bat`の先頭付近で設定します。
-
-```bat
-set "HASH_THRESHOLD=0.65"
-set "HASH_DICE_THRESHOLD=0.70"
-set "VECTOR_Q=1"
-set "VECTOR_THRESHOLD=0.75"
-```
+| 項目 | 値 |
+|---|---:|
+| 最小トークン数 | 50 |
+| N行ブロックの行数 | 3 |
+| SR候補閾値 | 0.15 |
+| トークン重複度候補閾値 | 0.50 |
+| SR判定閾値 | 0.70 |
+| トークン重複度判定閾値 | 0.70 |
+| AT類似度閾値 | 0.65 |
+| AST Dice類似度閾値 | 0.70 |
+| AST特徴ベクトルの深さ | 1 |
+| Jaccard類似度閾値 | 0.75 |
