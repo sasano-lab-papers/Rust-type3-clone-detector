@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/function_extractor",
+    "crates/ast_builder",
+]
+
+resolver = "2"
